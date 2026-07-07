@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
+    /* (semua gaya tetap sama seperti sebelumnya) */
     body { 
       margin:0; 
       font-family:Arial, sans-serif; 
@@ -734,6 +735,16 @@
       background-color: #e8f5e8 !important;
       font-weight: bold;
     }
+    /* style untuk nama yang difilter klik */
+    .nama-clickable {
+      cursor: pointer;
+      color: #0066cc;
+      text-decoration: underline dotted;
+      transition: background 0.2s;
+    }
+    .nama-clickable:hover {
+      background-color: #e6f0ff;
+    }
   </style>
 </head>
 <body>
@@ -1007,10 +1018,20 @@
                 <option value="all">Semua</option>
               </select>
             </div>
+            <!-- FILTER NAMA (baru) -->
+            <div>
+              <label for="filterNama"><i class="fas fa-filter"></i> Filter Nama:</label>
+              <select id="filterNama" onchange="applyFilter()">
+                <option value="all">Semua</option>
+              </select>
+            </div>
             <div>
               <label for="searchInput"><i class="fas fa-search"></i> Cari:</label>
               <input type="text" id="searchInput" placeholder="Nama / Part / Deskripsi" onkeyup="applyFilter()" />
             </div>
+            <button class="clear-filters" onclick="clearStockFilters()" style="margin-left:auto;">
+              <i class="fas fa-times"></i> Hapus Filter
+            </button>
             <!-- NEW: Sort Button for Part Column -->
             <button class="sort-btn" id="sortPartBtn" onclick="toggleSortPart()">
               <i class="fas fa-sort-alpha-down"></i>
@@ -2381,6 +2402,7 @@
           updateSortButton();
 
           updateFilterOptions(allData);
+          updateNamaFilterOptions(allData); // tambahan untuk filter nama
           currentStockPage = 1;
           renderTable();
           updateStatistics();
@@ -2449,6 +2471,8 @@
       if (sortPartOrder === 'none') {
         // Reset to original order
         filteredStock = [...allData];
+        // Re-apply filters if any
+        applyFilter(false);
       } else {
         // Sort by Part column (index 3)
         filteredStock.sort((a, b) => {
@@ -2464,6 +2488,49 @@
       }
     }
 
+    // ---- FUNGSI FILTER NAMA ----
+    function updateNamaFilterOptions(data) {
+      const namaSet = new Set();
+      data.forEach(row => {
+        const val = row[stockIndexMap[2]];
+        if (val) namaSet.add(val);
+      });
+      const select = document.getElementById("filterNama");
+      select.innerHTML = '<option value="all">Semua</option>';
+      [...namaSet].sort().forEach(n => {
+        let opt = document.createElement("option");
+        opt.value = n;
+        opt.textContent = n;
+        select.appendChild(opt);
+      });
+    }
+
+    // Fungsi untuk filter berdasarkan klik pada nama
+    function filterByNama(nama) {
+      if (!nama) return;
+      const select = document.getElementById("filterNama");
+      // Cari option dengan value nama, jika ada set selected
+      let found = false;
+      for (let opt of select.options) {
+        if (opt.value === nama) {
+          select.value = nama;
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        // Jika nama tidak ada di dropdown (misal data baru), tambahkan sementara
+        let opt = document.createElement("option");
+        opt.value = nama;
+        opt.textContent = nama;
+        opt.selected = true;
+        select.appendChild(opt);
+      }
+      applyFilter();
+      showNotification(`Menampilkan data untuk Nama: "${nama}"`);
+    }
+
+    // ---- RENDER STOCK TABLE dengan klik pada Nama ----
     function renderTable() {
       const tbody = document.getElementById("stockTable").querySelector("tbody");
       tbody.innerHTML = "";
@@ -2483,15 +2550,21 @@
         cellTipe.textContent = row[stockIndexMap[1]] || "";
         cellTipe.className = "text-center";
         
+        // Kolom NAMA - sekarang bisa diklik
         let cellNama = newRow.insertCell();
-        cellNama.textContent = row[stockIndexMap[2]] || "";
-        cellNama.className = "text-left";
+        const namaValue = row[stockIndexMap[2]] || "";
+        cellNama.textContent = namaValue;
+        cellNama.className = "text-left nama-clickable";
+        cellNama.title = "Klik untuk filter berdasarkan nama ini";
+        cellNama.onclick = function(e) {
+          e.stopPropagation();
+          filterByNama(namaValue);
+        };
         
+        // Kolom Part
         let cellPart = newRow.insertCell();
         cellPart.textContent = row[stockIndexMap[3]] || "";
         cellPart.className = "text-left";
-        
-        // Highlight sorted column
         if (sortPartOrder !== 'none') {
           cellPart.classList.add('sorted-column');
         }
@@ -2541,16 +2614,22 @@
       });
     }
 
-    function applyFilter() {
-      const filterVal = document.getElementById("filterLokasi").value;
+    function applyFilter(keepPage = true) {
+      const filterLokasi = document.getElementById("filterLokasi").value;
+      const filterNama = document.getElementById("filterNama").value;
       const searchVal = document.getElementById("searchInput").value.toLowerCase();
 
       // Start with all data
       filteredStock = [...allData];
       
       // Apply location filter
-      if (filterVal !== "all") {
-        filteredStock = filteredStock.filter(r => r[stockIndexMap[1]] == filterVal);
+      if (filterLokasi !== "all") {
+        filteredStock = filteredStock.filter(r => r[stockIndexMap[1]] == filterLokasi);
+      }
+
+      // Apply nama filter
+      if (filterNama !== "all") {
+        filteredStock = filteredStock.filter(r => (r[stockIndexMap[2]] || "") === filterNama);
       }
 
       // Apply search filter
@@ -2569,8 +2648,24 @@
         sortDataByPart();
       }
 
+      if (!keepPage) currentStockPage = 1;
+      renderTable();
+    }
+
+    // Fungsi untuk menghapus semua filter di stock
+    function clearStockFilters() {
+      document.getElementById("filterLokasi").value = "all";
+      document.getElementById("filterNama").value = "all";
+      document.getElementById("searchInput").value = "";
+      // Reset sort ke none? (opsional) Biarkan sort tetap jika ada
+      // Kita akan reset filter dan terapkan
+      filteredStock = [...allData];
+      if (sortPartOrder !== 'none') {
+        sortDataByPart();
+      }
       currentStockPage = 1;
       renderTable();
+      showNotification("Semua filter dihapus!");
     }
 
     function prevPage() {
@@ -3284,6 +3379,7 @@
       allData = loadFromLocalStorage('stockData');
       filteredStock = allData;
       updateFilterOptions(allData);
+      updateNamaFilterOptions(allData);
       renderTable();
       
       reservasiData = loadFromLocalStorage('reservasiData');
